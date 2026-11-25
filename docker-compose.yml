@@ -1,0 +1,94 @@
+
+services:
+  llama:
+    image: local/llama.cpp:server-cuda
+    build:
+      context: ./llama.cpp/.devops
+      dockerfile: cuda.Dockerfile
+    container_name: llama-server-1
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ./llama.cpp/models:/models
+      - ./logs:/logs
+    command: 
+      [
+        "--model", "/models/gemma-3-1b-it-Q2_K.gguf",
+        "--host", "0.0.0.0",
+        "--port", "8000",
+        "--ctx-size", "9096",
+        "--temp", "0.9",
+        "--n-predict", "-1",
+        "--threads", "10",
+        "--n-gpu-layers", "30",
+        "--batch-size", "512",
+        "--ubatch-size", "256",
+        "--flash-attn" , "auto",
+        "--cache-type-k", "f16",
+        "--cache-type-v", "f16",
+        "--mlock",
+        "--cont-batching",
+        "--parallel", "4",
+        "--defrag-thold", "0.1",
+        "--verbosity", "1",
+        "--log-file", "/logs/http_requests.log",
+        "--log-timestamps",
+        "--log-prefix"
+      ]
+    ports:
+      - "8000:8000"
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl --fail http://localhost:8000/health && exit 0 || exit 1"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 2
+    #   start_period: 5s
+
+  go-client:
+    image: go-client:latest
+    build:
+      context: ./Clients/go/
+      dockerfile: Dockerfile
+    container_name: go-client
+    restart: on-failure
+    # depends_on:
+    #   llama:
+    #     condition: service_healthy
+    environment:
+      # Environment variables for the Go application
+      - LLAMA_CPP_BASE_URL=http://llama:8000/v1
+    volumes:
+      # Mount data directory for parquet files
+      - .env:/app/.env:ro
+    ports:
+      - "8080:8080"
+  collector:
+    image: collector:latest
+    build:
+      context: ./collect/
+      dockerfile: Dockerfile
+    container_name: data-collector
+    restart: on-failure
+    volumes:
+      - .env:/app/.env:ro
+      - ./config.yaml:/app/config.yaml:ro
+    ports:
+      - "5050:5050"
+  etl:
+    image: etl:latest
+    build:
+      context: ./etl_pipeline/
+      dockerfile: Dockerfile
+    container_name: etl-pipeline
+    restart: on-failure
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./config.yaml:/app/config.yaml:ro
+    ports:
+      - "5000:5000"

@@ -1,0 +1,11 @@
+.env
+.venv
+.dockerignore
+savedResponse.txt
+data/*
+logs/*
+Server/Models/*
+!Server/Models/.gitkeep
+Clients/go/old/
+Clients/go/bin/
+old/*
